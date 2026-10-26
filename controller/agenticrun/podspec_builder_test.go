@@ -95,28 +95,25 @@ func TestBuildSkills_WithPaths(t *testing.T) {
 	}}
 
 	vols, mounts := b.buildSkills(skills)
-	if len(vols) != 2 {
-		t.Fatalf("expected 2 volumes (image + workdir), got %d", len(vols))
+	if len(vols) != 1 {
+		t.Fatalf("expected only the skills image volume, got %d volumes", len(vols))
 	}
 	if vols[0].Image == nil || vols[0].Image.Reference != "registry.example.com/skills:latest" {
 		t.Errorf("first volume should be image volume, got %+v", vols[0])
 	}
-	if vols[1].EmptyDir == nil {
-		t.Error("second volume should be emptyDir workdir")
+	if len(mounts) != 2 {
+		t.Fatalf("expected only the 2 skill path mounts, got %d mounts", len(mounts))
 	}
-
-	// workdir mount + 2 path mounts
-	if len(mounts) != 3 {
-		t.Fatalf("expected 3 mounts, got %d", len(mounts))
+	if mounts[0].MountPath != "/app/skills/network" || mounts[0].SubPath != "troubleshooting/network" {
+		t.Errorf("skill mount[0] = %q subpath=%q", mounts[0].MountPath, mounts[0].SubPath)
 	}
-	if mounts[0].MountPath != "/app/skills/.agents" {
-		t.Errorf("workdir mount path = %q", mounts[0].MountPath)
-	}
-	if mounts[1].MountPath != "/app/skills/network" || mounts[1].SubPath != "troubleshooting/network" {
+	if mounts[1].MountPath != "/app/skills/logs" || mounts[1].SubPath != "analysis/logs" {
 		t.Errorf("skill mount[1] = %q subpath=%q", mounts[1].MountPath, mounts[1].SubPath)
 	}
-	if mounts[2].MountPath != "/app/skills/logs" || mounts[2].SubPath != "analysis/logs" {
-		t.Errorf("skill mount[2] = %q subpath=%q", mounts[2].MountPath, mounts[2].SubPath)
+	for _, mount := range mounts {
+		if mount.Name != "skills" || !mount.ReadOnly {
+			t.Errorf("skill mount must use the read-only image volume, got %+v", mount)
+		}
 	}
 }
 
@@ -127,11 +124,11 @@ func TestBuildSkills_NoPaths(t *testing.T) {
 	}}
 
 	vols, mounts := b.buildSkills(skills)
-	if len(vols) != 2 {
-		t.Fatalf("expected 2 volumes, got %d", len(vols))
+	if len(vols) != 1 {
+		t.Fatalf("expected only the skills image volume, got %d volumes", len(vols))
 	}
-	if len(mounts) != 1 {
-		t.Fatalf("expected 1 mount (workdir only), got %d", len(mounts))
+	if len(mounts) != 0 {
+		t.Fatalf("expected no mounts without skill paths, got %d", len(mounts))
 	}
 }
 
@@ -907,12 +904,14 @@ func TestBuild_DeduplicatesVolumes(t *testing.T) {
 			Image: "quay.io/test/agent:latest",
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: "home", MountPath: "/home/agent"},
-				{Name: "skills-workdir", MountPath: "/app/skills/.agents"},
+				{Name: "skills", MountPath: "/app/skills/network-diagnostics", SubPath: "placeholder"},
 			},
 		}},
 		Volumes: []corev1.Volume{
 			{Name: "home", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-			{Name: "skills-workdir", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+			{Name: "skills", VolumeSource: corev1.VolumeSource{
+				Image: &corev1.ImageVolumeSource{Reference: "placeholder:latest"},
+			}},
 		},
 	}
 
@@ -953,11 +952,9 @@ func TestBuild_DeduplicatesVolumes(t *testing.T) {
 		}
 	}
 
-	// Exactly one home and skills-workdir volume, both emptyDir.
-	for _, name := range []string{"home", "skills-workdir"} {
-		if volCounts[name] != 1 {
-			t.Errorf("expected exactly 1 %q volume, got %d", name, volCounts[name])
-		}
+	// The base home volume is preserved exactly once.
+	if volCounts["home"] != 1 {
+		t.Errorf("expected exactly 1 home volume, got %d", volCounts["home"])
 	}
 
 	// Generated skills image volume present with correct image.
@@ -989,15 +986,11 @@ func TestBuild_GeneratedVolumeOverridesBase(t *testing.T) {
 		Containers: []corev1.Container{{
 			Name:  "agent",
 			Image: "quay.io/test/agent:latest",
-			VolumeMounts: []corev1.VolumeMount{
-				{Name: "skills-workdir", MountPath: "/app/skills/.agents"},
-			},
 		}},
 		Volumes: []corev1.Volume{
 			{Name: "skills", VolumeSource: corev1.VolumeSource{
 				Image: &corev1.ImageVolumeSource{Reference: "placeholder:latest"},
 			}},
-			{Name: "skills-workdir", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 		},
 	}
 
