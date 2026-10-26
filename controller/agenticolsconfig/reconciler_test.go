@@ -161,13 +161,13 @@ func TestReconcile_ActivationPendingAgenticRuns(t *testing.T) {
 	got := getConfig(t, fc)
 	cond := findCondition(got.Status.Conditions, agenticv1alpha1.AgenticOLSConfigConditionSuspended)
 	if cond == nil {
-		t.Fatal("Suspended condition not set during draining")
+		t.Fatal("Suspended condition not set during stopping")
 	}
 	if cond.Status != metav1.ConditionTrue {
 		t.Fatalf("condition status = %q, want True", cond.Status)
 	}
-	if cond.Reason != reasonDraining {
-		t.Fatalf("condition reason = %q, want %q", cond.Reason, reasonDraining)
+	if cond.Reason != "Stopping" {
+		t.Fatalf("condition reason = %q, want Stopping", cond.Reason)
 	}
 	wantMsg := "Waiting for 1 runs to terminate"
 	if cond.Message != wantMsg {

@@ -75,8 +75,8 @@ func (o *StatusOptions) Run(ctx context.Context) error {
 	if cfg.Spec.Suspended && suspendedCond != nil && suspendedCond.Status == metav1.ConditionTrue {
 		relative, absolute := formatConditionTimes(suspendedCond.LastTransitionTime, o.now())
 		switch suspendedCond.Reason {
-		case "Draining":
-			fmt.Fprintf(o.Out, "Agentic System: SUSPENDED (draining, %s)\n", suspendedCond.Message)
+		case "Stopping":
+			fmt.Fprintf(o.Out, "Agentic System: SUSPENDED (stopping, %s)\n", suspendedCond.Message)
 		default:
 			fmt.Fprintf(o.Out, "Agentic System: SUSPENDED (since %s ago, %s, %s)\n",
 				relative, absolute, suspendedCond.Message)

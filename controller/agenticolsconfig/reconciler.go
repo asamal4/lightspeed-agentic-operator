@@ -38,7 +38,7 @@ import (
 const (
 	requeueDelay = 5 * time.Second
 
-	reasonDraining                   = "Draining"
+	reasonStopping                   = "Stopping"
 	reasonAdminActivated             = "AdminActivated"
 	reasonAdminDeactivated           = "AdminDeactivated"
 	eventReasonSuspensionActivated   = "SuspensionActivated"
@@ -114,11 +114,11 @@ func (r *Reconciler) handleActivation(ctx context.Context, config *agenticv1alph
 		meta.SetStatusCondition(&config.Status.Conditions, metav1.Condition{
 			Type:    agenticv1alpha1.AgenticOLSConfigConditionSuspended,
 			Status:  metav1.ConditionTrue,
-			Reason:  reasonDraining,
+			Reason:  reasonStopping,
 			Message: fmt.Sprintf("Waiting for %d runs to terminate", nonTerminal),
 		})
 		if err := r.Status().Patch(ctx, config, client.MergeFrom(base)); err != nil {
-			return ctrl.Result{}, fmt.Errorf("patch Suspended=True/Draining: %w", err)
+			return ctrl.Result{}, fmt.Errorf("patch Suspended=True/Stopping: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: requeueDelay}, nil
 	}
