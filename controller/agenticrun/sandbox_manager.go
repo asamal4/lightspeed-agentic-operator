@@ -701,16 +701,13 @@ func podSpecToUnstructured(podSpec *corev1.PodSpec) (map[string]any, error) {
 	return result, nil
 }
 
-// Release ends the audit span and deletes the sandbox resource. Both bare-pod
-// and sandbox-claim deletion are attempted for TOCTOU safety (config may have
-// changed since Create). ConfigMap, result RBAC, and SA are cleaned up
-// automatically via owner references. Cross-namespace execution RBAC (Roles,
-// ClusterRoles) and reader subject bindings are cleaned up explicitly.
-// Idempotent.
 // Release ends the audit span and deletes the sandbox resource. spoke is
 // pre-resolved by the caller (ReleaseSandbox / ReleaseSandboxes) so that
-// bulk teardown reads the kubeconfig Secret only once.
-// zeroGrace requests zero-grace Pod deletion; false keeps the normal grace period.
+// bulk teardown reads the kubeconfig Secret only once. zeroGrace requests
+// zero-grace Pod deletion; false keeps the normal grace period. ConfigMap,
+// result RBAC, and SA are cleaned up automatically via owner references.
+// Cross-namespace execution RBAC (Roles, ClusterRoles) and reader subject
+// bindings are cleaned up explicitly. Idempotent.
 func (m *SandboxManager) Release(ctx context.Context, run *agenticv1alpha1.AgenticRun, step string, spoke *SpokeAccess, zeroGrace bool) error {
 	if m.audit != nil {
 		m.audit.CompleteStep(run, step, nil)
@@ -721,11 +718,21 @@ func (m *SandboxManager) Release(ctx context.Context, run *agenticv1alpha1.Agent
 		return nil
 	}
 
-	var firstErr error
-	if err := m.releaseBarePod(ctx, claimName, zeroGrace); err != nil {
-		firstErr = err
-	}
+	claimMode := false
 	if cfg := m.config.Get(); cfg != nil && cfg.Sandbox.Mode == sandboxModeSandboxClaim {
+		claimMode = true
+	}
+
+	var firstErr error
+	// During claim-mode suspension, delete only the ownership-checked backing
+	// Pod. A same-named Pod may belong to another Sandbox or be unrelated;
+	// ordinary cleanup keeps its existing name-only deletion.
+	if !claimMode || !zeroGrace {
+		if err := m.releaseBarePod(ctx, claimName, zeroGrace); err != nil {
+			firstErr = err
+		}
+	}
+	if claimMode {
 		if zeroGrace {
 			if err := m.releaseSandboxClaimPod(ctx, claimName); err != nil && firstErr == nil {
 				firstErr = err

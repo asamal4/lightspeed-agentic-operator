@@ -71,6 +71,35 @@ func TestStatus_SuspendedWithCondition(t *testing.T) {
 	}
 }
 
+func TestStatus_SuspendedStopping(t *testing.T) {
+	streams, out, _ := fakeStreams()
+	transition := metav1.NewTime(time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC))
+	now := transition.Add(14 * time.Minute)
+
+	cfg := testConfig(true)
+	cfg.Status.Conditions = []metav1.Condition{{
+		Type:               agenticv1alpha1.AgenticOLSConfigConditionSuspended,
+		Status:             metav1.ConditionTrue,
+		Reason:             "Stopping",
+		Message:            "Waiting for 3 runs to terminate",
+		LastTransitionTime: transition,
+	}}
+
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).
+		WithObjects(cfg).Build()
+
+	o := &StatusOptions{client: fc, IOStreams: streams, now: func() time.Time { return now }}
+	if err := o.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got := strings.TrimSpace(out.String())
+	want := "Agentic System: SUSPENDED (stopping, Waiting for 3 runs to terminate)"
+	if got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
 func TestStatus_ActiveWithDeactivationCondition(t *testing.T) {
 	streams, out, _ := fakeStreams()
 	transition := metav1.NewTime(time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC))

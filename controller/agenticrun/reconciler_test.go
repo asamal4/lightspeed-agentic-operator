@@ -961,6 +961,102 @@ func TestHandleSuspension_ZeroGracePodDeletion(t *testing.T) {
 	}
 }
 
+func TestHandleSuspension_ClaimModeSkipsSameNamePodWithMismatchedOwner(t *testing.T) {
+	run := testSMRun()
+	claimName := "ls-analysis-abc-123"
+	run.Status.Steps.Analysis.Sandbox.ClaimName = claimName
+	objects := sandboxReleaseObjects(t, run, claimName, claimName, true)
+
+	// The same-named Pod exists, but its Sandbox belongs to another claim.
+	sandbox := objects[3].(*unstructured.Unstructured)
+	controller := true
+	sandbox.SetOwnerReferences([]metav1.OwnerReference{{
+		APIVersion: smClaimGVK.GroupVersion().String(),
+		Kind:       smClaimGVK.Kind,
+		Name:       claimName,
+		UID:        types.UID("other-claim"),
+		Controller: &controller,
+	}})
+
+	fc := fake.NewClientBuilder().
+		WithScheme(testScheme()).
+		WithObjects(objects...).
+		WithStatusSubresource(&agenticv1alpha1.AgenticRun{}).
+		Build()
+	recorder := &podDeleteOptionsClient{Client: fc}
+	cache := testCache(t, "sandbox-claim")
+	manager := newTestSandboxManager(recorder, cache)
+	caller := &SandboxAgentCaller{Sandbox: manager, K8sClient: recorder, Namespace: "test-ns"}
+	r := &AgenticRunReconciler{Client: recorder, Agent: caller, Config: cache, Namespace: "test-ns"}
+
+	if _, err := r.handleSuspension(context.Background(), run); err != nil {
+		t.Fatalf("handleSuspension: %v", err)
+	}
+
+	if len(recorder.podDeletes) != 0 {
+		t.Fatalf("claim-mode suspension deleted Pods without verified ownership: %+v", recorder.podDeletes)
+	}
+	var pod corev1.Pod
+	if err := fc.Get(context.Background(), types.NamespacedName{Name: claimName, Namespace: "test-ns"}, &pod); err != nil {
+		t.Fatalf("same-named Pod with mismatched owner should be preserved: %v", err)
+	}
+}
+
+func TestHandleSuspension_ClaimModePreservesUnrelatedClaimNamedPod(t *testing.T) {
+	run := testSMRun()
+	claimName := "ls-analysis-abc-123"
+	run.Status.Steps.Analysis.Sandbox.ClaimName = claimName
+	objects := sandboxReleaseObjects(t, run, claimName, "backing-pod", true)
+
+	// An unrelated Pod happens to share the claim name.
+	controller := true
+	unrelatedPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      claimName,
+			Namespace: "test-ns",
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: smSandboxGVK.GroupVersion().String(),
+				Kind:       smSandboxGVK.Kind,
+				Name:       "other-sandbox",
+				UID:        types.UID("other-sandbox"),
+				Controller: &controller,
+			}},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	objects = append(objects, unrelatedPod)
+
+	fc := fake.NewClientBuilder().
+		WithScheme(testScheme()).
+		WithObjects(objects...).
+		WithStatusSubresource(&agenticv1alpha1.AgenticRun{}).
+		Build()
+	recorder := &podDeleteOptionsClient{Client: fc}
+	cache := testCache(t, "sandbox-claim")
+	manager := newTestSandboxManager(recorder, cache)
+	caller := &SandboxAgentCaller{Sandbox: manager, K8sClient: recorder, Namespace: "test-ns"}
+	r := &AgenticRunReconciler{Client: recorder, Agent: caller, Config: cache, Namespace: "test-ns"}
+
+	if _, err := r.handleSuspension(context.Background(), run); err != nil {
+		t.Fatalf("handleSuspension: %v", err)
+	}
+
+	if len(recorder.podDeletes) != 1 {
+		t.Fatalf("claim-mode suspension should delete only the backing Pod, got %+v", recorder.podDeletes)
+	}
+	got := recorder.podDeletes[0]
+	if got.name != "backing-pod" || got.grace == nil || *got.grace != 0 {
+		t.Fatalf("backing Pod delete = %+v, want name backing-pod with grace 0", got)
+	}
+	var pod corev1.Pod
+	if err := fc.Get(context.Background(), types.NamespacedName{Name: claimName, Namespace: "test-ns"}, &pod); err != nil {
+		t.Fatalf("unrelated claim-named Pod should be preserved: %v", err)
+	}
+	if err := fc.Get(context.Background(), types.NamespacedName{Name: "backing-pod", Namespace: "test-ns"}, &pod); err == nil {
+		t.Fatal("expected the ownership-checked backing Pod to be deleted")
+	}
+}
+
 func TestSandboxManagerReleaseKeepsDefaultPodGrace(t *testing.T) {
 	for _, mode := range []string{"bare-pod", "sandbox-claim"} {
 		t.Run(mode, func(t *testing.T) {
