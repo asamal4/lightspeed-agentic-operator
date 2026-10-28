@@ -72,18 +72,16 @@ type AnthropicConfig struct {
 	URL string `json:"url,omitempty"`
 }
 
-// GoogleCloudVertexModelProvider selects which model provider stack talks to Vertex AI.
+// GoogleCloudVertexModelProvider selects the model family on Vertex AI.
 //
-// +kubebuilder:validation:Enum=Anthropic;Google;OpenAI
+// +kubebuilder:validation:Enum=Anthropic;Google
 type GoogleCloudVertexModelProvider string
 
 const (
-	// GoogleCloudVertexModelProviderAnthropic uses Anthropic models on Vertex (Claude SDK).
+	// GoogleCloudVertexModelProviderAnthropic uses Anthropic models on Vertex.
 	GoogleCloudVertexModelProviderAnthropic GoogleCloudVertexModelProvider = "Anthropic"
-	// GoogleCloudVertexModelProviderGoogle uses Google models on Vertex (GenAI SDK).
+	// GoogleCloudVertexModelProviderGoogle uses Google models on Vertex.
 	GoogleCloudVertexModelProviderGoogle GoogleCloudVertexModelProvider = "Google"
-	// GoogleCloudVertexModelProviderOpenAI uses OpenAI-compatible models on Vertex (OpenAI SDK).
-	GoogleCloudVertexModelProviderOpenAI GoogleCloudVertexModelProvider = "OpenAI"
 )
 
 // GoogleCloudVertexConfig contains configuration for the Google Cloud Vertex AI provider.
@@ -114,9 +112,8 @@ type GoogleCloudVertexConfig struct {
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z][a-z0-9-]*[a-z0-9]$')",message="region must contain only lowercase letters, digits, and hyphens, start with a letter, and not end with a hyphen"
 	Region string `json:"region,omitempty"`
 
-	// modelProvider selects which model provider stack talks to Vertex AI (required).
-	// "Anthropic" uses Anthropic models on Vertex; "Google" uses Google models on Vertex;
-	// "OpenAI" uses OpenAI-compatible models on Vertex.
+	// modelProvider selects the model family on Vertex AI (required).
+	// "Anthropic" uses Anthropic models on Vertex; "Google" uses Google models on Vertex.
 	// Enum is defined on GoogleCloudVertexModelProvider.
 	// +required
 	ModelProvider GoogleCloudVertexModelProvider `json:"modelProvider,omitempty"`

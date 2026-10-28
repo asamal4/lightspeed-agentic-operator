@@ -196,14 +196,11 @@ func verifyAnalysisPodSkillsMount(t *testing.T, c client.Client, run *agenticv1a
 		t.Fatalf("analysis pod %s skills image=%q, want %q", pod.Name, skillsVolume.Image.Reference, source.Image)
 	}
 
-	var skillsMount, workdirMount *corev1.VolumeMount
+	var skillsMount *corev1.VolumeMount
 	for i := range pod.Spec.Containers[0].VolumeMounts {
 		mount := &pod.Spec.Containers[0].VolumeMounts[i]
-		switch {
-		case mount.Name == "skills":
+		if mount.Name == "skills" {
 			skillsMount = mount
-		case mount.Name == "skills-workdir":
-			workdirMount = mount
 		}
 	}
 	if skillsMount == nil {
@@ -212,8 +209,8 @@ func verifyAnalysisPodSkillsMount(t *testing.T, c client.Client, run *agenticv1a
 	if skillsMount.MountPath != expectedMountPath || skillsMount.SubPath != expectedSubPath {
 		t.Fatalf("analysis pod %s skills mount=%+v, want mountPath=%q subPath=%q", pod.Name, skillsMount, expectedMountPath, expectedSubPath)
 	}
-	if workdirMount == nil || workdirMount.MountPath != "/app/skills/.agents" {
-		t.Fatalf("analysis pod %s missing skills-workdir mount: mounts=%+v", pod.Name, pod.Spec.Containers[0].VolumeMounts)
+	if !skillsMount.ReadOnly {
+		t.Fatalf("analysis pod %s skills mount must be read-only: mount=%+v", pod.Name, skillsMount)
 	}
 	t.Logf("Verified %s pod %s has skills image %q mounted at %s (subPath=%s)", run.Name, pod.Name, source.Image, expectedMountPath, expectedSubPath)
 }
